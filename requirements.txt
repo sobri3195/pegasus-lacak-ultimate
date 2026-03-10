@@ -6,3 +6,4 @@ phonenumbers==8.13.11
 python-whois==0.8.0
 shodan==1.28.0
 beautifulsoup4==4.12.2 
+dnspython==2.6.1
