@@ -6,19 +6,12 @@ import getpass
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from pyfiglet import Figlet
+import pyfiglet
 from cryptography.fernet import Fernet
 import json
 from datetime import datetime
-import subprocess
 import platform
 import signal
-import requests
-import socket
-import phonenumbers
-from phonenumbers import geocoder, carrier
-from rich.progress import Progress
-from rich.table import Table
 from rich.prompt import Prompt
 
 # Import komponen
@@ -141,7 +134,7 @@ class PegasusLacak:
     def authenticate(self):
         """Proses autentikasi pengguna"""
         attempts = 0
-        max_attempts = self.config['max_login_attempts']
+        max_attempts = self.config.get('max_login_attempts', self.config.get('settings', {}).get('max_login_attempts', 3))
         
         while attempts < max_attempts:
             try:
@@ -245,7 +238,9 @@ class PegasusLacak:
         self.console.print("[bold]Phone Number Analysis[/bold]")
         
         phone = Prompt.ask("[cyan]Enter phone number (format: +628xxx):[/cyan]")
-        self.phone_processor.analyze_phone(phone)
+        results = self.phone_processor.analyze_number(phone)
+        self._display_and_save("Phone Analysis Results", "phone", phone, results)
+        input("\nPress Enter to continue...")
         
     def email_scan_menu(self):
         """Menu untuk analisis email"""
@@ -253,7 +248,9 @@ class PegasusLacak:
         self.console.print("[bold]Email Investigation[/bold]")
         
         email = Prompt.ask("[cyan]Enter email address:[/cyan]")
-        self.email_processor.analyze_email(email)
+        results = self.email_processor.analyze_email(email)
+        self._display_and_save("Email Analysis Results", "email", email, results)
+        input("\nPress Enter to continue...")
         
     def ip_scan_menu(self):
         """Menu untuk analisis IP"""
@@ -261,22 +258,30 @@ class PegasusLacak:
         self.console.print("[bold]IP Address Analysis[/bold]")
         
         ip = Prompt.ask("[cyan]Enter IP address:[/cyan]")
-        self.ip_processor.analyze_ip(ip)
+        results = self.ip_processor.analyze_ip(ip)
+        self._display_and_save("IP Analysis Results", "ip", ip, results)
+        input("\nPress Enter to continue...")
         
     def social_scan_menu(self):
         """Menu untuk analisis media sosial"""
         self.console.clear()
         self.console.print("[bold]Social Media Analysis[/bold]")
         
-        social_media = Prompt.ask("[cyan]Enter social media platform:[/cyan]")
-        self.social_analyzer.analyze_social_media(social_media)
+        username = Prompt.ask("[cyan]Enter username:[/cyan]")
+        results = self.social_analyzer.analyze_username(username)
+        self._display_and_save("Social Media Analysis Results", "social", username, results)
+        input("\nPress Enter to continue...")
         
     def darkweb_scan_menu(self):
         """Menu untuk scan dark web"""
         self.console.clear()
         self.console.print("[bold]Dark Web Scan[/bold]")
         
-        self.darkweb_scanner.scan_dark_web()
+        target_type = Prompt.ask("[cyan]Target type[/cyan]", choices=["email", "phone", "username", "ip"], default="email")
+        target_value = Prompt.ask("[cyan]Target value:[/cyan]")
+        results = self.darkweb_scanner.scan_target(target_type, target_value)
+        self._display_and_save("Dark Web Scan Results", "darkweb", target_value, results)
+        input("\nPress Enter to continue...")
         
     def web_scan_menu(self):
         """Menu untuk rekonstruksi website"""
@@ -284,22 +289,53 @@ class PegasusLacak:
         self.console.print("[bold]Website Reconnaissance[/bold]")
         
         url = Prompt.ask("[cyan]Enter website URL:[/cyan]")
-        self.web_recon.recon_website(url)
+        domain = url.replace("https://", "").replace("http://", "").split('/')[0]
+        results = self.web_recon.analyze_website(domain)
+        self._display_and_save("Website Reconnaissance Results", "web", domain, results)
+        input("\nPress Enter to continue...")
         
     def view_history(self):
         """Menu untuk melihat riwayat scan"""
         self.console.clear()
         self.console.print("[bold]Scan History[/bold]")
         
-        self.logger.view_scan_history()
+        self.logger.view_scan_history(self.console)
+        input("\nPress Enter to continue...")
         
     def settings_menu(self):
         """Menu untuk mengatur pengaturan"""
         self.console.clear()
         self.console.print("[bold]Settings[/bold]")
         
-        # Implementasi menu pengaturan
-        pass
+        current_attempts = self.config.get('max_login_attempts', self.config.get('settings', {}).get('max_login_attempts', 3))
+        self.console.print(f"Current max login attempts: [cyan]{current_attempts}[/cyan]")
+
+        new_attempts = Prompt.ask(
+            "[cyan]Set max login attempts (1-10), kosongkan untuk batal[/cyan]",
+            default=str(current_attempts)
+        )
+
+        try:
+            new_attempts_int = int(new_attempts)
+            if 1 <= new_attempts_int <= 10:
+                self.config['max_login_attempts'] = new_attempts_int
+                with open('config/settings.json', 'w') as f:
+                    json.dump(self.config, f, indent=4)
+                self.console.print("[green]Settings updated successfully.[/green]")
+            else:
+                self.console.print("[red]Value must be between 1 and 10.[/red]")
+        except ValueError:
+            self.console.print("[red]Invalid input. Settings unchanged.[/red]")
+
+        input("\nPress Enter to continue...")
+
+    def _display_and_save(self, title, scan_type, target, results):
+        if "error" in results:
+            self.console.print(f"[red]Error: {results['error']}[/red]")
+            return
+
+        self.display_results(title, results)
+        self.save_results(scan_type, target, results)
 
     def display_results(self, title, data):
         """Tampilkan hasil dalam format tabel"""
